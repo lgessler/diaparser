@@ -78,7 +78,7 @@ class Parser():
                     f"{'train:':6} {train}\n"
                     f"{'dev:':6} {dev}\n")
         train = Dataset(self.transform, args.train, **args)
-        train.build(args.batch_size, args.buckets, True, dist.is_initialized())
+        train.build(args.batch_size, args.buckets, False, dist.is_initialized())
         logger.info(f"{'train:':6} {len(train):5} sentences, "
                     f"{len(train.loader):3} batches, "
                     f"{len(train.buckets)} buckets")

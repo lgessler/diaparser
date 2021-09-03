@@ -4,6 +4,7 @@ import os
 
 import torch
 import torch.nn as nn
+
 from ..models import BiaffineDependencyModel
 from .parser import Parser
 from ..utils import Config, Dataset, Embedding
@@ -16,6 +17,84 @@ from ..utils.transform import CoNLL
 from tokenizer.tokenizer import Tokenizer
 
 logger = get_logger(__name__)
+
+
+COPTIC_TAGS = ['UNKNOWN', 'ADV', 'CFOC_PPERS', 'PINT', 'PPERS', 'V_PPERO', 'ART', 'AAOR', 'FUT', 'CONJ', 'VIMP',
+               'CPRET', 'COP', 'ANEGPST', 'PPERI', 'NPROP', 'APST', 'PUNCT', 'PREP_PPERO', 'N_PPERO', 'PPOS', 'VSTAT',
+               'ANEGOPT', 'FM', 'APST_PPERS', 'ACONJ', 'ANEGPST_PPERS', 'NUM', 'CPRET_PPERS', 'ANY', 'CREL', 'NEG',
+               'ACOND_PPERS', 'PTC', 'ACOND', 'CFOC', 'ACAUS', 'APREC', 'IMOD', 'ALIM', 'ACONJ_PPERS', 'AOPT', 'VBD',
+               'IMOD_PPERO', 'CCIRC_PPERS', 'EXIST', 'CREL_PPERS', 'V', 'N', 'AOPT_PPERS', 'PDEM', 'PPERO', 'ANEGJUS',
+               'PREP', 'AFUTCONJ', 'AJUS', 'ANEGAOR', 'CCIRC']
+
+
+def read_coptic_embeds():
+    with open('data/coptic_50d.vec') as f:
+        lines = f.readlines()
+
+    m = {}
+    for line in lines:
+        word, *embs = line.strip().split(" ")
+        if len(embs) != 50:
+            print("Skipping word in coptic embeddings: less than 50 d")
+            continue
+        embs = torch.tensor([float(d) for d in embs])
+        m[word] = embs
+
+    unk_emb = torch.vstack([v for v in m.values()]).mean(dim=0)
+    return m, unk_emb
+
+
+EMBEDS, UNK_EMB = read_coptic_embeds()
+
+
+def read_words(sent):
+    annos = sorted([a for a in sent.annotations.items() if a[0] >= 0], key=lambda a:a[0])
+    words = []
+    for _, a in annos:
+        cols = a.split('\t')
+        w = cols[1]
+        e = EMBEDS[w] if w in EMBEDS else UNK_EMB
+        words.append(e)
+
+    return torch.vstack(words)
+
+
+def read_tags(sent):
+    annos = sorted([a for a in sent.annotations.items() if a[0] >= 0], key=lambda a: a[0])
+    tags = []
+    for _, a in annos:
+        cols = a.split('\t')
+        tags.append(COPTIC_TAGS.index(cols[4]))
+    return torch.tensor(tags)
+
+
+def pad_sequence(tensors, pad_tensor, embs=False):
+    maxlen = max(t.shape[0] for t in tensors)
+
+    new_tensors = []
+    for i, tensor in enumerate(tensors):
+        diff = maxlen - tensor.shape[0]
+        pad = [pad_tensor] * diff
+        if embs:
+            pad = [p.unsqueeze(0) for p in pad]
+            padded_tensor = torch.cat([tensor] + pad, dim=0)
+        else:
+            padded_tensor = torch.hstack([tensor] + pad)
+        new_tensors.append(padded_tensor)
+    if embs:
+        return torch.cat([t.unsqueeze(0) for t in new_tensors], dim=0)
+    else:
+        return torch.vstack(new_tensors)
+
+
+def tags_and_static_embs(loader, i):
+    sentence_indices = loader.batch_sampler.buckets[i]
+    sentences = [s for i, s in enumerate(loader.dataset.sentences) if i in sentence_indices]
+    tags = pad_sequence([read_tags(s) for s in sentences], torch.tensor(0))
+    static_embs = pad_sequence([read_words(s) for s in sentences], torch.zeros(50), embs=True)
+    tags = torch.cat((torch.zeros((tags.shape[0], 1)), tags), dim=1).int()
+    static_embs = torch.cat((torch.zeros((static_embs.shape[0], 1, 50)), static_embs), dim=1)
+    return tags, static_embs
 
 
 class BiaffineDependencyParser(Parser):
@@ -133,13 +212,14 @@ class BiaffineDependencyParser(Parser):
 
         bar, metric = progress_bar(loader), AttachmentMetric()
 
-        for words, feats, arcs, rels in bar:
+        for i, (words, feats, arcs, rels) in enumerate(bar):
             self.optimizer.zero_grad()
+            tags, static_embs = tags_and_static_embs(loader, i)
 
             mask = words.ne(self.WORD.pad_index)
             # ignore the first token of each sentence
             mask[:, 0] = 0
-            s_arc, s_rel = self.model(words, feats)
+            s_arc, s_rel = self.model(words, feats, tags, static_embs)
             loss = self.model.loss(s_arc, s_rel, arcs, rels, mask, self.args.partial)
             loss.backward()
             nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip)
@@ -161,11 +241,12 @@ class BiaffineDependencyParser(Parser):
 
         total_loss, metric = 0, AttachmentMetric()
 
-        for words, feats, arcs, rels in loader:
+        for i, (words, feats, arcs, rels) in enumerate(loader):
+            tags, static_embs = tags_and_static_embs(loader, i)
             mask = words.ne(self.WORD.pad_index)
             # ignore the first token of each sentence
             mask[:, 0] = 0
-            s_arc, s_rel = self.model(words, feats)
+            s_arc, s_rel = self.model(words, feats, tags, static_embs)
             loss = self.model.loss(s_arc, s_rel, arcs, rels, mask, self.args.partial)
             arc_preds, rel_preds = self.model.decode(s_arc, s_rel, mask,
                                                      self.args.tree,
@@ -237,7 +318,7 @@ class BiaffineDependencyParser(Parser):
             return parser
 
         logger.info("Building the fields")
-        WORD = Field('words', pad=pad, unk=unk, bos=bos, lower=True)
+        WORD = Field('words', pad="[PAD]", unk="[UNK]", bos="[CLS]", lower=False)
         if args.feat == 'char':
             FEAT = SubwordField('chars', pad=pad, unk=unk, bos=bos, fix_len=args.fix_len)
         elif args.feat == 'bert':

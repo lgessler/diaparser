@@ -124,6 +124,8 @@ class BiaffineDependencyModel(nn.Module):
         # cant use Config(**locals()) because it includes self
         self.args = Config().update(locals())
         args = self.args
+        self.pos_embedding = torch.nn.Embedding(58, 10)
+        embed_size = args.n_word_embed + args.n_feat_embed + 50 + 10
         if args.n_word_embed:
             # the embedding layer
             self.word_embed = nn.Embedding(num_embeddings=args.n_words,
@@ -160,7 +162,7 @@ class BiaffineDependencyModel(nn.Module):
 
         if args.n_lstm_layers:
             # the lstm layer
-            self.lstm = LSTM(input_size=args.n_word_embed+args.n_feat_embed,
+            self.lstm = LSTM(input_size=embed_size,
                              hidden_size=args.n_lstm_hidden,
                              num_layers=args.n_lstm_layers,
                              bidirectional=True,
@@ -214,7 +216,9 @@ class BiaffineDependencyModel(nn.Module):
         return self
 
     def forward(self, words: torch.Tensor,
-                feats: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+                feats: torch.Tensor,
+                tags: torch.Tensor,
+                static_embs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""
         Args:
             words (~torch.LongTensor): ``[batch_size, seq_len]``.
@@ -253,7 +257,8 @@ class BiaffineDependencyModel(nn.Module):
                 word_embed += self.pretrained(words)
             word_embed, feat_embed = self.embed_dropout(word_embed, feat_embed)
             # concatenate the word and feat representations
-            embed = torch.cat((word_embed, feat_embed), dim=-1)
+            tag_embs = self.pos_embedding(tags.to(word_embed.device))
+            embed = torch.cat((word_embed, feat_embed, tag_embs, static_embs.to(word_embed.device)), dim=-1)
         else:
             embed = self.embed_dropout(feat_embed)[0]
 
