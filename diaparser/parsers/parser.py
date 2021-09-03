@@ -183,7 +183,7 @@ class Parser():
         if args.prob:
             self.transform.append(Field('probs'))
         
-        if isinstance(data, str) and (not conll_format(data) or args.text):
+        if isinstance(data, str) and (not conll_format(data) or (hasattr(args, 'text') and args.text)):
             self.transform.reader = Tokenizer(args.text, dir=args.cache_dir, verbose=args.verbose).reader()
 
         logger.info("Loading the data")
