@@ -232,7 +232,7 @@ class BiaffineDependencyModel(nn.Module):
         """
 
         # words, feats are the first two items in the batch from DataLoader.__iter__()
-        whole_words = feats[:, :, 0]  # drop subpiece dimension
+        whole_words = feats.mean(dim=-1)  # collapse subtokens via avg
         batch_size, seq_len = whole_words.shape
         # get the mask and lengths of given batch
         mask = whole_words.ne(self.feat_embed.pad_index)
