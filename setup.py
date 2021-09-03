@@ -3,7 +3,7 @@
 from setuptools import find_packages, setup
 
 setup(
-    name='diaparser',
+    name='ouraparser',
     version='1.1.2',
     author='Yu Zhang, Giuseppe Attardi',
     author_email='yzhang.cs@outlook.com, attardi@di.unipi.it',
@@ -11,7 +11,8 @@ setup(
     long_description=open('README.md', 'r').read(),
     long_description_content_type='text/markdown',
     url='https://github.com/Unipisa/diaparser',
-    packages=find_packages(),
+    packages=['ouraparser'],
+    package_dir={'ouraparser': 'diaparser'}
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',
