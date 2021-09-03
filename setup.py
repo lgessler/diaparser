@@ -12,7 +12,7 @@ setup(
     long_description_content_type='text/markdown',
     url='https://github.com/Unipisa/diaparser',
     packages=['ouraparser'],
-    package_dir={'ouraparser': 'diaparser'}
+    package_dir={'ouraparser': 'diaparser'},
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',
