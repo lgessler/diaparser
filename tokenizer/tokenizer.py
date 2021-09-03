@@ -4,7 +4,7 @@ import torch
 import json
 import os
 from contextlib import contextmanager
-from diaparser.catalog import available_processors, download_processors
+from ouraparser.catalog import available_processors, download_processors
 
 # reference https://github.com/stanfordnlp/stanza/blob/master/stanza/utils/prepare_tokenizer_data.py
 
