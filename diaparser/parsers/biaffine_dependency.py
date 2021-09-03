@@ -267,13 +267,15 @@ class BiaffineDependencyParser(Parser):
         self.model.eval()
 
         preds = {}
+        bar = progress_bar(loader)
         arcs, rels, probs = [], [], []
-        for words, feats in progress_bar(loader):
+        for i, (words, feats) in enumerate(bar):
+            tags, static_embs = tags_and_static_embs(loader, i)
             mask = words.ne(self.WORD.pad_index)
             # ignore the first token of each sentence
             mask[:, 0] = 0
             lens = mask.sum(1).tolist()
-            s_arc, s_rel = self.model(words, feats)
+            s_arc, s_rel = self.model(words, feats, tags, static_embs)
             arc_preds, rel_preds = self.model.decode(s_arc, s_rel, mask,
                                                      self.args.tree,
                                                      self.args.proj)
