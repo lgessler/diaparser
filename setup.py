@@ -11,8 +11,7 @@ setup(
     long_description=open('README.md', 'r').read(),
     long_description_content_type='text/markdown',
     url='https://github.com/Unipisa/diaparser',
-    packages=['ouraparser'],
-    package_dir={'ouraparser': 'diaparser'},
+    packages=find_packages(),
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',
